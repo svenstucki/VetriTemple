@@ -21,6 +21,12 @@ char msg[50];
 int value = 0;
 
 
+void dbg() {
+  static int cnt = 0;
+  Serial.println(cnt++);
+  delay(1);
+}
+
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, HIGH);
@@ -40,19 +46,19 @@ void setup() {
 void setup_stepper() {
   // setup pins as output
   const int allPins[] = {
-    P_EN,
+    P_nEN,
     P_MS1, P_MS2, P_MS3,
     P_nRST, P_nSLP,
     P_STEP, P_DIR,
   };
-  for (unsigned int i = 0; i < sizeof(allPins)/sizeof(*allPins); i++) {
+  for (int i = 0; i < 8; i++) {
     pinMode(allPins[i], OUTPUT);
   }
 
-  digitalWrite(P_EN, HIGH);
+  digitalWrite(P_nEN, HIGH);
   digitalWrite(P_nSLP, HIGH);
 
-  digitalWrite(P_MS1, LOW);
+  digitalWrite(P_MS1, HIGH);
   digitalWrite(P_MS2, LOW);
   digitalWrite(P_MS3, LOW);
 
@@ -90,12 +96,16 @@ void setup_wifi() {
 
 void do_steps(int direction, int steps) {
   digitalWrite(P_DIR, direction);
+  digitalWrite(P_nEN, LOW);
 
   for (int i = 0; i < steps; i++) {
-    digitalWrite(P_STEP, LOW);
     digitalWrite(P_STEP, HIGH);
-    delay(1);
+    delayMicroseconds(5000);
+    digitalWrite(P_STEP, LOW);
+    delayMicroseconds(5000);
   }
+
+  digitalWrite(P_nEN, HIGH);
 }
 
 
@@ -106,6 +116,14 @@ void loop() {
   client.loop();
 
   long now = millis();
+  if (now - lastMsg > 5000) {
+    lastMsg = now;
+    Serial.println("go");
+    do_steps(HIGH, 100);
+  }
+  return;
+
+
   if (now - lastMsg > 2000) {
     lastMsg = now;
     ++value;
@@ -114,7 +132,7 @@ void loop() {
     Serial.println(msg);
     client.publish("outTopic", msg);
 
-    do_steps(HIGH, 10);
+    do_steps(HIGH, 4);
   }
 }
 
