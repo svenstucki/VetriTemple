@@ -4,16 +4,12 @@
   - Serial out is 74880 baud on boot, then 115200
   - Install PubSub library (Sketch -> Include Library -> Manage Libraries -> search PubSub, author is Nick O'Leary)
 
-
-  Includes code from: https://github.com/sparkfun/SparkFun_AutoDriver_Arduino_Library/tree/V_1.3.2 -> see beerware license
-
 */
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <SPI.h>
-#include "SparkFunAutoDriver.h"
 
+#include "pins.h"
 #include "config.h"
 
 
@@ -23,8 +19,6 @@ PubSubClient client(wifiClient);
 long lastMsg = 0;
 char msg[50];
 int value = 0;
-
-AutoDriver stepper(0, 15);
 
 
 void setup() {
@@ -41,6 +35,33 @@ void setup() {
   client.setServer(CFG_MQTT_SERVER, 1883);
   client.setCallback(callback);
   delay(100);
+}
+
+void setup_stepper() {
+  // setup pins as output
+  const int allPins[] = {
+    P_EN,
+    P_MS1, P_MS2, P_MS3,
+    P_nRST, P_nSLP,
+    P_STEP, P_DIR,
+  };
+  for (unsigned int i = 0; i < sizeof(allPins)/sizeof(*allPins); i++) {
+    pinMode(allPins[i], OUTPUT);
+  }
+
+  digitalWrite(P_EN, HIGH);
+  digitalWrite(P_nSLP, HIGH);
+
+  digitalWrite(P_MS1, LOW);
+  digitalWrite(P_MS2, LOW);
+  digitalWrite(P_MS3, LOW);
+
+  digitalWrite(P_STEP, LOW);
+  digitalWrite(P_DIR, LOW);
+
+  // reset
+  digitalWrite(P_nRST, LOW);
+  digitalWrite(P_nRST, HIGH);
 }
 
 void setup_wifi() {
@@ -66,37 +87,15 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-void setup_stepper() {
-  // set CS, MISO, MOSI, SCK
-  pinMode(15, OUTPUT); // CS
-  pinMode(12, INPUT);  // MISO
-  pinMode(13, OUTPUT); // MOSI
-  pinMode(14, OUTPUT); // SCK
 
-  SPI.begin();
-  SPI.setDataMode(SPI_MODE3);
+void do_steps(int direction, int steps) {
+  digitalWrite(P_DIR, direction);
 
-  stepper.resetDev();
-  stepper.configStepMode(STEP_FS);   // 0 microsteps per step
-  stepper.setMaxSpeed(10000);        // 10000 steps/s max
-  stepper.setFullSpeed(10000);       // microstep below 10000 steps/s
-  stepper.setAcc(10000);             // accelerate at 10000 steps/s/s
-  stepper.setDec(10000);
-  stepper.setSlewRate(SR_530V_us);   // Upping the edge speed increases torque.
-  stepper.setOCThreshold(OC_750mA);  // OC threshold 750mA
-  stepper.setPWMFreq(PWM_DIV_2, PWM_MUL_2); // 31.25kHz PWM freq
-  stepper.setOCShutdown(OC_SD_DISABLE); // don't shutdown on OC
-  stepper.setVoltageComp(VS_COMP_DISABLE); // don't compensate for motor V
-  stepper.setSwitchMode(SW_USER);    // Switch is not hard stop
-  stepper.setOscMode(EXT_16MHZ_OSCOUT_INVERT); // for stepper, we want 16MHz
-                                    //  external osc, 16MHz out. boardB
-                                    //  will be the same in all respects
-                                    //  but this, as it will generate the
-                                    //  clock.
-  stepper.setAccKVAL(128);           // We'll tinker with these later, if needed.
-  stepper.setDecKVAL(128);
-  stepper.setRunKVAL(128);
-  stepper.setHoldKVAL(32);           // This controls the holding current; keep it low.
+  for (int i = 0; i < steps; i++) {
+    digitalWrite(P_STEP, LOW);
+    digitalWrite(P_STEP, HIGH);
+    delay(1);
+  }
 }
 
 
@@ -115,7 +114,7 @@ void loop() {
     Serial.println(msg);
     client.publish("outTopic", msg);
 
-    stepper.move(FWD, 1000);
+    do_steps(HIGH, 10);
   }
 }
 
@@ -163,4 +162,3 @@ void reconnect() {
     }
   }
 }
-
