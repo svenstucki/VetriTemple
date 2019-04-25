@@ -3,6 +3,10 @@
   - Select LOLIN(WEMOS) D1 R2 & mini + defaults
   - Serial out is 74880 baud on boot, then 115200
   - Install PubSub library (Sketch -> Include Library -> Manage Libraries -> search PubSub, author is Nick O'Leary)
+    docs: https://pubsubclient.knolleary.net/index.html
+  - Prepare config.h according to template
+
+  - Use http://www.hivemq.com/demos/websocket-client/ for MQTT debugging
 
 */
 
@@ -18,16 +22,10 @@ PubSubClient client(wifiClient);
 
 long lastMsg = 0;
 char msg[50];
-int value = 0;
+int count = 0;
 
 int microstep = 4;
 
-
-void dbg() {
-  static int cnt = 0;
-  Serial.println(cnt++);
-  delay(1);
-}
 
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
@@ -149,41 +147,43 @@ void loop() {
   client.loop();
 
   long now = millis();
-  if (now - lastMsg > 5000) {
+  if (now - lastMsg >= 60000) {
     lastMsg = now;
-    Serial.println("go");
-    do_steps(HIGH, 460);
-  }
-  return;
 
-
-  if (now - lastMsg > 2000) {
-    lastMsg = now;
-    ++value;
-    snprintf (msg, 50, "hello world #%ld", value);
-    Serial.print("Publish message: ");
+    // increase and publish counter
+    count++;
+    snprintf (msg, 50, "hello #%ld", count);
     Serial.println(msg);
-    client.publish("outTopic", msg);
-
-    do_steps(HIGH, 4);
+    client.publish("hello", msg);
   }
 }
 
 
 void callback(const char *topic, byte *payload, unsigned int length) {
-  Serial.print("Message arrived [");
+  Serial.print("Message received [");
   Serial.print(topic);
-  Serial.print("] ");
+  Serial.print("]: ");
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
 
-  // switch LED on or off based on first character of payload
-  if ((char)payload[0] == '1') {
-    digitalWrite(BUILTIN_LED, LOW);
-  } else {
-    digitalWrite(BUILTIN_LED, HIGH);
+  String topicStr = topic;
+  if (topicStr == "/reward") {
+    // distribute reward
+    Serial.println("Distributing reward...");
+    do_steps(HIGH, 460);
+    client.publish("/reward/done", "1");
+  } else if (topicStr == "/move") {
+    // move a fixed number of steps
+    Serial.println("Turning disk...");
+    long steps = topicStr.toInt();
+    if (steps > 0) {
+      do_steps(HIGH, steps);
+    } else if (steps < 0) {
+      // reverse direction
+      do_steps(LOW, -steps);
+    }
   }
 }
 
@@ -199,11 +199,11 @@ void reconnect() {
     Serial.print(": ");
 
     // attempt to connect
-    if (client.connect(clientId.c_str())) {
+    if (client.connect(clientId.c_str(), CFG_MQTT_USER, CFG_MQTT_PASSWORD)) {
       Serial.println("connected.");
 
-      client.publish("outTopic", "hello world");
       client.subscribe("/reward");
+      client.subscribe("/move");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
