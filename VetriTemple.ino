@@ -14,11 +14,13 @@
 
 
 WiFiClient wifiClient;
-
 PubSubClient client(wifiClient);
+
 long lastMsg = 0;
 char msg[50];
 int value = 0;
+
+int microstep = 4;
 
 
 void dbg() {
@@ -34,7 +36,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  setup_stepper();
+  setup_stepper(microstep);
   setup_wifi();
   delay(100);
 
@@ -43,24 +45,48 @@ void setup() {
   delay(100);
 }
 
-void setup_stepper() {
-  // setup pins as output
+void setup_stepper(int microstep) {
+  int ms;
   const int allPins[] = {
     P_nEN,
     P_MS1, P_MS2, P_MS3,
     P_nRST, P_nSLP,
     P_STEP, P_DIR,
   };
-  for (int i = 0; i < 8; i++) {
+
+  // setup pins as output
+  for (int i = 0; i < sizeof(allPins)/sizeof(*allPins); i++) {
     pinMode(allPins[i], OUTPUT);
   }
 
-  digitalWrite(P_nEN, HIGH);
+  digitalWrite(P_nEN, LOW);
   digitalWrite(P_nSLP, HIGH);
 
-  digitalWrite(P_MS1, HIGH);
-  digitalWrite(P_MS2, LOW);
-  digitalWrite(P_MS3, LOW);
+  switch (microstep) {
+    case 2:
+      // half step
+      ms = 0x1;
+      break;
+    case 4:
+      // quarter step
+      ms = 0x2;
+      break;
+    case 8:
+      // eighth step
+      ms = 0x3;
+      break;
+    case 16:
+      // sixteenth step
+      ms = 0x7;
+      break;
+    case 1:
+    default:
+      // full step
+      ms = 0x0;
+  }
+  digitalWrite(P_MS1, !!(ms & 0x1));
+  digitalWrite(P_MS2, !!(ms & 0x2));
+  digitalWrite(P_MS3, !!(ms & 0x4));
 
   digitalWrite(P_STEP, LOW);
   digitalWrite(P_DIR, LOW);
@@ -98,11 +124,18 @@ void do_steps(int direction, int steps) {
   digitalWrite(P_DIR, direction);
   digitalWrite(P_nEN, LOW);
 
+  steps *= microstep;
+
   for (int i = 0; i < steps; i++) {
     digitalWrite(P_STEP, HIGH);
-    delayMicroseconds(5000);
+    delayMicroseconds(750);
     digitalWrite(P_STEP, LOW);
-    delayMicroseconds(5000);
+    delayMicroseconds(750);
+
+    // prevent soft WDT reset
+    if (i % 64 == 0) {
+      yield();
+    }
   }
 
   digitalWrite(P_nEN, HIGH);
@@ -119,7 +152,7 @@ void loop() {
   if (now - lastMsg > 5000) {
     lastMsg = now;
     Serial.println("go");
-    do_steps(HIGH, 100);
+    do_steps(HIGH, 460);
   }
   return;
 
@@ -137,7 +170,7 @@ void loop() {
 }
 
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void callback(const char *topic, byte *payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -170,7 +203,7 @@ void reconnect() {
       Serial.println("connected.");
 
       client.publish("outTopic", "hello world");
-      client.subscribe("inTopic");
+      client.subscribe("/reward");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
