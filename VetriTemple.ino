@@ -1,6 +1,9 @@
 /*
 
-  - Select LOLIN(WEMOS) D1 R2 & mini + defaults
+  - Add ESP8266 repository to additional board manager URLs (in Arduino IDE preferences):
+    http://arduino.esp8266.com/stable/package_esp8266com_index.json
+  - Install ESP8266 support from board manager
+  - Select board LOLIN(WEMOS) D1 R2 & mini + defaults
   - Serial out is 74880 baud on boot, then 115200
   - Install PubSub library (Sketch -> Include Library -> Manage Libraries -> search PubSub, author is Nick O'Leary)
     docs: https://pubsubclient.knolleary.net/index.html
@@ -172,7 +175,7 @@ void callback(const char *topic, byte *payload, unsigned int length) {
   if (topicStr == "/reward") {
     // distribute reward
     Serial.println("Distributing reward...");
-    do_steps(HIGH, 460);
+    do_steps(HIGH, 916);
     client.publish("/reward/done", "1");
   } else if (topicStr == "/move") {
     // move a fixed number of steps
